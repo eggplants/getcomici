@@ -386,7 +386,8 @@ class Comici:
                 "page-from": page_from,
                 "page-to": page_to,
             },
-            headers=self._headers(episode.url),
+            # Some sites (studio.booklista.co.jp) answer 403 without a site Referer.
+            headers={**self._headers(episode.url), "Referer": episode.url},
             timeout=30,
         )
         res.raise_for_status()

@@ -184,6 +184,19 @@ def test_pages_is_empty_when_nothing_is_readable():
     assert Comici(session).pages(make_episode(session)) == []
 
 
+def test_contents_info_sends_the_site_referer():
+    # studio.booklista.co.jp answers 403 without one.
+    session = FakeSession(
+        {
+            "/episodes/": FakeResponse(content=EPISODE_HTML.encode()),
+            "contentsInfo": FakeResponse(payload={"totalPages": 0, "result": []}),
+        },
+    )
+    Comici(session).pages(make_episode(session))
+
+    assert session.headers_seen[-1]["Referer"] == "https://mangabu.jp/episodes/71f48a2c352ed"
+
+
 def test_contents_info_raises_on_an_error_body():
     session = FakeSession(
         {
@@ -331,17 +344,15 @@ TEST_URLS: dict[str, str] = {
     "mangaspa.nikkan-spa.jp": "https://mangaspa.nikkan-spa.jp/episodes/5fbbe0d610d7b",
     "namicomic.jp": "https://namicomic.jp/episodes/6372afa2ba503",
     "piacomic.jp": "https://piacomic.jp/episodes/d3d3e7ba955dd",
+    "studio.booklista.co.jp": "https://studio.booklista.co.jp/episodes/de1ce4d9cc0ae",
     "takecomic.jp": "https://takecomic.jp/episodes/6b35483f82ab3",
     "younganimal.com": "https://younganimal.com/episodes/b790a79dd70a7",
     "youngchampion.jp": "https://youngchampion.jp/episodes/2bd90287798ab",
 }
 
-# Purchase-only storefronts: every episode wants an account that owns it, so
-# there is nothing a signed-out run can download.
-NO_FREE_EPISODE = (
-    "ebookstore.corkagency.com",
-    "studio.booklista.co.jp",
-)
+# This one renders its viewer after hydration, so the episode HTML carries no
+# '#comici-viewer' element and `episode_info` has nothing to read.
+NO_FREE_EPISODE = ("ebookstore.corkagency.com",)
 
 
 def test_every_known_host_is_covered():
