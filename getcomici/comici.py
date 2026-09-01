@@ -74,6 +74,10 @@ TILES = COLUMNS * ROWS
 
 _VIEWER_ID = "comici-viewer"
 
+# Sites that hand their images over unscrambled still go through `descramble`,
+# with a permutation that puts every tile back where it already was.
+_IDENTITY_SCRAMBLE = json.dumps(list(range(TILES)))
+
 
 class ComiciError(Exception):
     """Base class for every error this module raises."""
@@ -113,6 +117,10 @@ class Episode:
     episode_title: str
     next_url: str | None
     member_jwt: str = ""
+    # Pages the episode JSON carried itself, on sites that render the viewer
+    # client-side. None when the page had a viewer and `pages` has to ask
+    # `contentsInfo` for them.
+    inline_pages: tuple[Page, ...] | None = None
 
 
 def parse_scramble(scramble: str) -> list[int]:
@@ -320,8 +328,7 @@ class Comici:
 
         viewer = soup.find(id=_VIEWER_ID)
         if not isinstance(viewer, Tag):
-            msg = f"no '#{_VIEWER_ID}' element on {url}; is it a Comici+ episode?"
-            raise NotAComiciPageError(msg)
+            return self._episode_from_api(url)
 
         viewer_id = str(viewer.attrs.get("data-comici-viewer-id", "")) or None
         if viewer_id is None:
@@ -362,6 +369,8 @@ class Comici:
         Returns:
             The pages, in reading order. Empty when the episode is not readable.
         """
+        if episode.inline_pages is not None:
+            return list(episode.inline_pages)
         if member_jwt is None:
             member_jwt = episode.member_jwt
         total = int(self._contents_info(episode, 0, 0, member_jwt).get("totalPages") or 0)
@@ -370,6 +379,69 @@ class Comici:
         body = self._contents_info(episode, 0, total - 1, member_jwt)
         pages: list[Page] = list(body.get("result") or [])
         return sorted(pages, key=lambda page: page["sort"])
+
+    def _episode_from_api(self, url: str) -> Episode:
+        """Read an episode that renders its viewer only after hydration.
+
+        Newer sites (ebookstore.corkagency.com) ship an episode page with no
+        `#comici-viewer` element on it, and their `/api/episodes/{id}` hands the
+        page images over directly, already unscrambled, instead of a viewer id
+        to look up with `contentsInfo`.
+
+        Args:
+            url: The episode URL.
+
+        Returns:
+            The parsed episode, carrying its pages.
+
+        Raises:
+            NotAComiciPageError: The API describes no episode either.
+        """
+        parsed = urlparse(url)
+        episode_id = parsed.path.rstrip("/").rsplit("/", 1)[-1]
+        api_base = f"{parsed.scheme}://{parsed.netloc}/api"
+        res = self._session.get(
+            f"{api_base}/episodes/{episode_id}",
+            headers={**self._headers(url), "Referer": url},
+            timeout=30,
+        )
+        body = res.json() if res.ok else None
+        episode = body.get("episode") if isinstance(body, dict) else None
+        if not isinstance(episode, dict):
+            msg = f"no '#{_VIEWER_ID}' element on {url}, and its episode API describes none either."
+            raise NotAComiciPageError(msg)
+
+        series = episode.get("series") or {}
+        summary = episode.get("summary") or {}
+        next_id = str(episode.get("nextEpisodeId") or "")
+        return Episode(
+            url=url,
+            viewer_id=str(episode.get("id") or episode_id),
+            api_base=api_base,
+            series_title=str(series.get("name") or "").strip() or episode_id,
+            episode_title=str(summary.get("title") or "").strip() or episode_id,
+            next_url=urljoin(url, next_id) if next_id else None,
+            inline_pages=self._inline_pages(episode),
+        )
+
+    @staticmethod
+    def _inline_pages(episode: dict[str, Any]) -> tuple[Page, ...]:
+        """Turn the `content` blocks of an episode JSON into pages."""
+        return tuple(
+            Page(
+                imageUrl=str(node["url"]),
+                scramble=_IDENTITY_SCRAMBLE,
+                sort=index,
+                width=int(node.get("width") or 0),
+                height=int(node.get("height") or 0),
+                expiresOn=0,
+            )
+            for index, node in enumerate(
+                node
+                for node in episode.get("content") or []
+                if isinstance(node, dict) and node.get("type") == "image" and node.get("url")
+            )
+        )
 
     def _contents_info(
         self,

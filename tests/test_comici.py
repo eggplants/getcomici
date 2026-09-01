@@ -34,9 +34,10 @@ EPISODE_HTML = """
 
 
 class FakeResponse:
-    def __init__(self, content=b"", payload=None):
+    def __init__(self, content=b"", payload=None, ok=True):
         self.content = content
         self._payload = payload
+        self.ok = ok
 
     def raise_for_status(self):
         return None
@@ -140,9 +141,62 @@ def test_episode_info_reads_the_viewer_element():
 
 
 def test_episode_info_rejects_a_page_without_a_viewer():
-    session = FakeSession({"/episodes/": FakeResponse(content=b"<html><body>nope</body></html>")})
+    session = FakeSession(
+        {
+            "/api/episodes/": FakeResponse(payload={}),
+            "/episodes/": FakeResponse(content=b"<html><body>nope</body></html>"),
+        },
+    )
     with pytest.raises(NotAComiciPageError):
         Comici(session).episode_info("https://example.com/episodes/1")
+
+
+EPISODE_API = {
+    "episode": {
+        "id": "ad51b31190681",
+        "nextEpisodeId": "d05c9cd20ca35",
+        "series": {"name": "IRUKA"},
+        "summary": {"title": "1話"},
+        "content": [
+            {"type": "image", "url": "https://cdn.comici.jp/a.jpg", "width": 800, "height": 2560},
+            {"type": "html", "html": ""},
+            {"type": "image", "url": "https://cdn.comici.jp/b.jpg", "width": 800, "height": 1760},
+        ],
+    },
+}
+
+
+def hydrated_session():
+    """A site whose episode HTML carries no viewer, as corkagency's does not."""
+    return FakeSession(
+        {
+            "/api/episodes/": FakeResponse(payload=EPISODE_API),
+            "/episodes/": FakeResponse(content=b"<html><body>hydrated later</body></html>"),
+        },
+    )
+
+
+def test_episode_info_falls_back_to_the_episode_api():
+    session = hydrated_session()
+    episode = Comici(session).episode_info("https://ebookstore.corkagency.com/episodes/ad51b31190681")
+
+    assert episode.api_base == "https://ebookstore.corkagency.com/api"
+    assert episode.series_title == "IRUKA"
+    assert episode.episode_title == "1話"
+    assert episode.next_url == "https://ebookstore.corkagency.com/episodes/d05c9cd20ca35"
+
+
+def test_inline_pages_skip_non_image_blocks_and_never_scramble():
+    session = hydrated_session()
+    comici = Comici(session)
+    pages = comici.pages(comici.episode_info("https://ebookstore.corkagency.com/episodes/ad51b31190681"))
+
+    assert [page["imageUrl"] for page in pages] == ["https://cdn.comici.jp/a.jpg", "https://cdn.comici.jp/b.jpg"]
+    assert [page["sort"] for page in pages] == [0, 1]
+    # The identity permutation leaves every tile where it already was.
+    assert parse_scramble(pages[0]["scramble"]) == list(range(TILES))
+    # No contentsInfo round trip is needed: the episode JSON already had them.
+    assert not [url for url, _ in session.calls if "contentsInfo" in url]
 
 
 def test_episode_info_without_a_next_episode():
@@ -332,6 +386,7 @@ TEST_URLS: dict[str, str] = {
     "comicride.jp": "https://comicride.jp/episodes/e7137bf1e8b27",
     "comics.manga-bang.com": "https://comics.manga-bang.com/episodes/3e3efa60aa9b9",
     "comirela.com": "https://comirela.com/episodes/78d565d1005a1",
+    "ebookstore.corkagency.com": "https://ebookstore.corkagency.com/episodes/ad51b31190681",
     "g-comi.jp": "https://g-comi.jp/episodes/cb3488365c75c",
     "hanayume.com": "https://hanayume.com/episodes/bc43f35254f09",
     "hayacomic.jp": "https://hayacomic.jp/episodes/86dbdd38cbdba",
@@ -350,13 +405,9 @@ TEST_URLS: dict[str, str] = {
     "youngchampion.jp": "https://youngchampion.jp/episodes/2bd90287798ab",
 }
 
-# This one renders its viewer after hydration, so the episode HTML carries no
-# '#comici-viewer' element and `episode_info` has nothing to read.
-NO_FREE_EPISODE = ("ebookstore.corkagency.com",)
-
 
 def test_every_known_host_is_covered():
-    assert set(TEST_URLS) | set(NO_FREE_EPISODE) == set(VALID_HOSTS)
+    assert set(TEST_URLS) == set(VALID_HOSTS)
 
 
 @pytest.mark.parametrize("host", TEST_URLS)
