@@ -16,7 +16,7 @@
   <https://github.com/eggplants/getcomici/pkgs/container/getcomici>
 )
 
-Retrieve and save images from manga distribution sites using Comici+.
+Retrieve and save images from manga distribution sites using [Comici+](https://comici.co.jp/business/comici-plus).
 
 ## Installation
 
