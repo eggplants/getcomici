@@ -6,19 +6,34 @@ requires = [ "hatchling", "uv-dynamic-versioning" ]
 name = "getcomici"
 description = "Retrieve and save images from manga distribution sites using Comici+."
 readme = "README.md"
+keywords = [
+  "cli",
+  "comici",
+  "comici-plus",
+  "downloader",
+  "japanese",
+  "manga",
+  "manga-downloader",
+  "scraping",
+]
 license = { text = "MIT" }
 authors = [ { name = "eggplants", email = "w10776e8w@yahoo.co.jp" } ]
 requires-python = ">=3.11"
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: MIT License",
+  "Natural Language :: Japanese",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Topic :: Internet :: WWW/HTTP",
+  "Topic :: Multimedia :: Graphics",
+  "Topic :: Utilities",
   "Typing :: Typed",
 ]
 dynamic = [ "version" ]
@@ -29,6 +44,8 @@ dependencies = [
   "requests>=2.32",
   "rich>=13.7",
 ]
+urls.Documentation = "https://egpl.dev/getcomici/"
+urls.Issues = "https://github.com/eggplants/getcomici/issues"
 urls.Repository = "https://github.com/eggplants/getcomici"
 scripts.cget = "getcomici.cli:main"
 scripts.getcomici = "getcomici.cli:main"
