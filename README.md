@@ -18,6 +18,41 @@
 
 Retrieve and save images from manga distribution sites using [Comici+](https://comici.co.jp/business/comici-plus).
 
+## Valid URL Formats
+
+- `<host>/episodes/<id>`
+  - e.g. <https://mangabu.jp/episodes/71f48a2c352ed>
+
+## Available Hosts
+
+- <https://asacomi.jp>
+- <https://bibibi-comic.com>
+- <https://championcross.jp>
+- <https://comic-growl.com>
+- <https://comic-room-base.com>
+- <https://comic.j-nbooks.jp>
+- <https://comicpash.jp>
+- <https://comicride.jp>
+- <https://comics.manga-bang.com>
+- <https://comirela.com>
+- <https://ebookstore.corkagency.com>
+- <https://g-comi.jp>
+- <https://hanayume.com>
+- <https://hayacomic.jp>
+- <https://heros-web.com>
+- <https://kansai.mag-garden.co.jp>
+- <https://kimicomi.com>
+- <https://manga-zegra.com>
+- <https://mangabu.jp>
+- <https://mangalt.jp>
+- <https://mangaspa.nikkan-spa.jp>
+- <https://namicomic.jp>
+- <https://piacomic.jp>
+- <https://studio.booklista.co.jp>
+- <https://takecomic.jp>
+- <https://younganimal.com>
+- <https://youngchampion.jp>
+
 ## Installation
 
 ```bash

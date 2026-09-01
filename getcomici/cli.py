@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import getpass
 import shutil
 import sys
 import warnings
@@ -70,6 +71,8 @@ def parse_args(args: list[str] | None = None) -> Namespace:
     parser.add_argument("-f", "--first", action="store_true", help="download only the first page")
     parser.add_argument("-o", "--overwrite", action="store_true", help="download again if it exists")
     parser.add_argument("-m", "--metadata", action="store_true", help="save page metadata as json")
+    parser.add_argument("-u", "--username", metavar="ID", help="comici id or email to log in with")
+    parser.add_argument("-p", "--password", metavar="PW", help="password (prompted for if -u is given without it)")
     parser.add_argument("-q", "--quiet", action="store_true", help="disable console output")
     parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args(args)
@@ -79,6 +82,17 @@ def main(args: list[str] | None = None) -> None:
     """Run the command."""
     parsed = parse_args(args)
     comici = Comici()
+    if parsed.username:
+        password = parsed.password or getpass.getpass("password: ")
+        try:
+            comici.login(parsed.url, parsed.username, password)
+        except ComiciError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        if not parsed.quiet:
+            print("logged in as:", parsed.username)
+    elif parsed.password:
+        print("warning: -p without -u does nothing.", file=sys.stderr)
     if not parsed.quiet and not Comici.is_valid_uri(parsed.url):
         print(f"warning: {urlparse(parsed.url).hostname} is not a known Comici+ site, trying anyway.")
 

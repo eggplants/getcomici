@@ -83,6 +83,10 @@ class NotAComiciPageError(ComiciError):
     """The fetched page carries no Comici+ viewer."""
 
 
+class LoginError(ComiciError):
+    """The site refused the credentials."""
+
+
 class NeedPurchase(Warning):
     """The episode is not readable without buying it or logging in."""
 
@@ -108,6 +112,7 @@ class Episode:
     series_title: str
     episode_title: str
     next_url: str | None
+    member_jwt: str = ""
 
 
 def parse_scramble(scramble: str) -> list[int]:
@@ -177,6 +182,7 @@ class Comici:
             session.mount("https://", adapter)
             session.mount("http://", adapter)
         self._session = session
+        self._id_tokens: dict[str, str] = {}
 
     @staticmethod
     def is_valid_uri(url: str) -> bool:
@@ -243,6 +249,59 @@ class Comici:
         )
         return episode.next_url, save_dir, True
 
+    def login(self, url: str, user_id: str, password: str) -> None:
+        """Sign in, so episodes the account may read become readable.
+
+        Sites run NextAuth behind `/api/auth`, with a credentials provider that
+        takes a Comici ID or an email address. The session cookie lands on the
+        shared session and the returned id token is sent with later API calls.
+        This grants nothing the account does not already own.
+
+        Args:
+            url: Any URL on the site to sign in to.
+            user_id: A Comici ID or the email address the account uses.
+            password: The account's password.
+
+        Raises:
+            LoginError: The site refused the credentials.
+        """
+        origin = self._origin(url)
+        auth = f"{origin}/api/auth"
+        csrf = self._session.get(f"{auth}/csrf", headers=HEADERS, timeout=30)
+        csrf.raise_for_status()
+
+        res = self._session.post(
+            f"{auth}/callback/credentials",
+            data={
+                "id": user_id,
+                "password": password,
+                "csrfToken": csrf.json()["csrfToken"],
+                "callbackUrl": f"{origin}/",
+                "json": "true",
+            },
+            headers=HEADERS,
+            timeout=30,
+        )
+        res.raise_for_status()
+
+        session = self._session.get(f"{auth}/session", headers=HEADERS, timeout=30)
+        session.raise_for_status()
+        token = (session.json() or {}).get("idToken")
+        if not token:
+            msg = f"{origin} refused the credentials for {user_id!r}."
+            raise LoginError(msg)
+        self._id_tokens[origin] = str(token)
+
+    @staticmethod
+    def _origin(url: str) -> str:
+        parsed = urlparse(url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    def _headers(self, url: str) -> dict[str, str]:
+        """Headers for `url`, carrying the id token once its site is signed in."""
+        token = self._id_tokens.get(self._origin(url))
+        return {**HEADERS, "Authorization": token} if token else dict(HEADERS)
+
     def episode_info(self, url: str) -> Episode:
         """Read the viewer parameters off an episode page.
 
@@ -255,7 +314,7 @@ class Comici:
         Raises:
             NotAComiciPageError: The page carries no Comici+ viewer.
         """
-        res = self._session.get(url, headers=HEADERS, timeout=30)
+        res = self._session.get(url, headers=self._headers(url), timeout=30)
         res.raise_for_status()
         soup = BeautifulSoup(res.content, "html.parser")
 
@@ -283,13 +342,14 @@ class Comici:
         return Episode(
             url=url,
             viewer_id=viewer_id,
+            member_jwt=str(viewer.attrs.get("data-member-jwt", "")),
             api_base=api_base,
             series_title=series_title,
             episode_title=episode_title,
             next_url=next_url,
         )
 
-    def pages(self, episode: Episode, member_jwt: str = "") -> list[Page]:
+    def pages(self, episode: Episode, member_jwt: str | None = None) -> list[Page]:
         """List every page of an episode.
 
         `contentsInfo` refuses a range wider than the episode, so the total is
@@ -297,11 +357,13 @@ class Comici:
 
         Args:
             episode: The episode to list.
-            member_jwt: A logged-in member token, for episodes that need one.
+            member_jwt: Overrides the token the episode page carried, if any.
 
         Returns:
             The pages, in reading order. Empty when the episode is not readable.
         """
+        if member_jwt is None:
+            member_jwt = episode.member_jwt
         total = int(self._contents_info(episode, 0, 0, member_jwt).get("totalPages") or 0)
         if total <= 0:
             return []
@@ -324,7 +386,7 @@ class Comici:
                 "page-from": page_from,
                 "page-to": page_to,
             },
-            headers=HEADERS,
+            headers=self._headers(episode.url),
             timeout=30,
         )
         res.raise_for_status()
@@ -383,7 +445,7 @@ class Comici:
     def _image(self, page: Page, referer: str) -> Image.Image:
         res = self._session.get(
             page["imageUrl"],
-            headers={**HEADERS, "Referer": referer},
+            headers={**self._headers(referer), "Referer": referer},
             timeout=60,
         )
         res.raise_for_status()

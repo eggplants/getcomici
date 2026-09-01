@@ -11,8 +11,10 @@ from getcomici.comici import (
     COLUMNS,
     ROWS,
     TILES,
+    VALID_HOSTS,
     Comici,
     ComiciError,
+    LoginError,
     NotAComiciPageError,
     descramble,
     parse_scramble,
@@ -50,9 +52,19 @@ class FakeSession(Session):
         super().__init__()
         self.routes = routes
         self.calls = []
+        self.posts = []
+        self.headers_seen = []
 
     def get(self, url, **kwargs):
         self.calls.append((url, kwargs.get("params")))
+        self.headers_seen.append(kwargs.get("headers") or {})
+        return self._route(url)
+
+    def post(self, url, data=None, json=None, **_kwargs):
+        self.posts.append((url, data if data is not None else json))
+        return self._route(url)
+
+    def _route(self, url):
         for needle, response in self.routes.items():
             if needle in url:
                 return response
@@ -226,3 +238,119 @@ def test_get_skips_an_existing_directory(tmp_path):
     _, _, saved = Comici(session).get("https://mangabu.jp/episodes/71f48a2c352ed", tmp_path)
 
     assert saved is False
+
+
+AUTH_ROUTES = {
+    "/api/auth/csrf": FakeResponse(payload={"csrfToken": "tok"}),
+    "/api/auth/callback/credentials": FakeResponse(payload={"url": "https://mangabu.jp/"}),
+    "/api/auth/session": FakeResponse(payload={"idToken": "id-token-value", "user": 1}),
+}
+
+
+def test_login_posts_the_credentials_with_the_csrf_token():
+    session = FakeSession(dict(AUTH_ROUTES))
+    Comici(session).login("https://mangabu.jp/episodes/1", "comici-id", "pw")
+
+    url, data = session.posts[0]
+    assert url == "https://mangabu.jp/api/auth/callback/credentials"
+    assert data["id"] == "comici-id"
+    assert data["password"] == "pw"
+    assert data["csrfToken"] == "tok"
+
+
+def test_login_raises_when_no_token_comes_back():
+    routes = dict(AUTH_ROUTES) | {"/api/auth/session": FakeResponse(payload={})}
+    with pytest.raises(LoginError, match="refused the credentials"):
+        Comici(FakeSession(routes)).login("https://mangabu.jp/episodes/1", "who", "pw")
+
+
+def test_a_signed_in_site_sends_the_token():
+    routes = dict(AUTH_ROUTES) | {
+        "/episodes/": FakeResponse(content=EPISODE_HTML.encode()),
+        "contentsInfo": FakeResponse(payload={"totalPages": 1, "result": []}),
+    }
+    session = FakeSession(routes)
+    comici = Comici(session)
+    comici.login("https://mangabu.jp/episodes/1", "comici-id", "pw")
+    comici.pages(comici.episode_info("https://mangabu.jp/episodes/71f48a2c352ed"))
+
+    assert session.headers_seen[-1]["Authorization"] == "id-token-value"
+
+
+def test_another_site_does_not_get_the_token():
+    routes = dict(AUTH_ROUTES) | {
+        "/episodes/": FakeResponse(content=EPISODE_HTML.encode()),
+        "contentsInfo": FakeResponse(payload={"totalPages": 1, "result": []}),
+    }
+    session = FakeSession(routes)
+    comici = Comici(session)
+    comici.login("https://mangabu.jp/episodes/1", "comici-id", "pw")
+    comici.episode_info("https://younganimal.com/episodes/2")
+
+    assert "Authorization" not in session.headers_seen[-1]
+
+
+def test_pages_uses_the_token_the_page_rendered():
+    html = EPISODE_HTML.replace(
+        'data-api-domain="/api"',
+        'data-api-domain="/api" data-member-jwt="page-jwt"',
+    )
+    session = FakeSession(
+        {
+            "/episodes/": FakeResponse(content=html.encode()),
+            "contentsInfo": FakeResponse(payload={"totalPages": 1, "result": []}),
+        },
+    )
+    comici = Comici(session)
+    comici.pages(comici.episode_info("https://mangabu.jp/episodes/71f48a2c352ed"))
+
+    assert session.calls[-1][1]["user-id"] == "page-jwt"
+
+
+# One episode per known site that is free to read without an account.
+TEST_URLS: dict[str, str] = {
+    "asacomi.jp": "https://asacomi.jp/episodes/d689876764c05",
+    "bibibi-comic.com": "https://bibibi-comic.com/episodes/3fc263ee98e51",
+    "championcross.jp": "https://championcross.jp/episodes/f79c98b6ede83",
+    "comic-growl.com": "https://comic-growl.com/episodes/ae67f63a142b8",
+    "comic-room-base.com": "https://comic-room-base.com/episodes/49e48489486b7",
+    "comic.j-nbooks.jp": "https://comic.j-nbooks.jp/episodes/4c9428882f24a",
+    "comicpash.jp": "https://comicpash.jp/episodes/3e051ee5500c3",
+    "comicride.jp": "https://comicride.jp/episodes/e7137bf1e8b27",
+    "comics.manga-bang.com": "https://comics.manga-bang.com/episodes/3e3efa60aa9b9",
+    "comirela.com": "https://comirela.com/episodes/78d565d1005a1",
+    "g-comi.jp": "https://g-comi.jp/episodes/cb3488365c75c",
+    "hanayume.com": "https://hanayume.com/episodes/bc43f35254f09",
+    "hayacomic.jp": "https://hayacomic.jp/episodes/86dbdd38cbdba",
+    "heros-web.com": "https://heros-web.com/episodes/3a2698c5efefe",
+    "kansai.mag-garden.co.jp": "https://kansai.mag-garden.co.jp/episodes/24c0c8b3e0b5b",
+    "kimicomi.com": "https://kimicomi.com/episodes/a5c306c4268e1",
+    "manga-zegra.com": "https://manga-zegra.com/episodes/ce0950449d914",
+    "mangabu.jp": "https://mangabu.jp/episodes/ff7e9e1616543",
+    "mangalt.jp": "https://mangalt.jp/episodes/2e416d98ce780",
+    "mangaspa.nikkan-spa.jp": "https://mangaspa.nikkan-spa.jp/episodes/5fbbe0d610d7b",
+    "namicomic.jp": "https://namicomic.jp/episodes/6372afa2ba503",
+    "piacomic.jp": "https://piacomic.jp/episodes/d3d3e7ba955dd",
+    "takecomic.jp": "https://takecomic.jp/episodes/6b35483f82ab3",
+    "younganimal.com": "https://younganimal.com/episodes/b790a79dd70a7",
+    "youngchampion.jp": "https://youngchampion.jp/episodes/2bd90287798ab",
+}
+
+# Purchase-only storefronts: every episode wants an account that owns it, so
+# there is nothing a signed-out run can download.
+NO_FREE_EPISODE = (
+    "ebookstore.corkagency.com",
+    "studio.booklista.co.jp",
+)
+
+
+def test_every_known_host_is_covered():
+    assert set(TEST_URLS) | set(NO_FREE_EPISODE) == set(VALID_HOSTS)
+
+
+@pytest.mark.parametrize("host", TEST_URLS)
+def test_site_download(tmp_path, host):
+    _next_url, save_dir, saved = Comici().get(TEST_URLS[host], tmp_path, only_first=True)
+
+    assert saved is True
+    assert (save_dir / "0.jpg").exists()

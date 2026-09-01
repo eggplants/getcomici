@@ -7,7 +7,7 @@ import pytest
 
 from getcomici import __version__
 from getcomici.cli import check_url, main, parse_args
-from getcomici.comici import ComiciError, NeedPurchase, NotAComiciPageError
+from getcomici.comici import ComiciError, LoginError, NeedPurchase, NotAComiciPageError
 
 
 def test_check_url_accepts_an_unlisted_https_host():
@@ -45,7 +45,11 @@ class RecordingComici:
 
     def __init__(self, *_args, **_kwargs):
         self.gets: list[str] = []
+        self.logins: list[tuple[str, str, str]] = []
         RecordingComici.instances.append(self)
+
+    def login(self, url, user_id, password):
+        self.logins.append((url, user_id, password))
 
     @staticmethod
     def is_valid_uri(url):
@@ -144,3 +148,40 @@ def test_a_locked_first_episode_exits_nonzero(monkeypatch, capsys):
 
     assert excinfo.value.code == 1
     assert "comici-viewer" in capsys.readouterr().err
+
+
+def test_login_runs_before_downloading(recording, capsys):
+    main(["-u", "comici-id", "-p", "pw", "https://mangabu.jp/episodes/0"])
+    assert recording.instances[0].logins == [("https://mangabu.jp/episodes/0", "comici-id", "pw")]
+    assert "logged in as: comici-id" in capsys.readouterr().out
+
+
+def test_a_missing_password_is_prompted_for(recording, monkeypatch):
+    monkeypatch.setattr("getpass.getpass", lambda *_: "typed-pw")
+    main(["-u", "comici-id", "https://mangabu.jp/episodes/0"])
+    assert recording.instances[0].logins[0][2] == "typed-pw"
+
+
+def test_no_credentials_means_no_login(recording):
+    main(["https://mangabu.jp/episodes/0"])
+    assert recording.instances[0].logins == []
+
+
+def test_password_without_username_warns(recording, capsys):
+    main(["-p", "pw", "https://mangabu.jp/episodes/0"])
+    assert "-p without -u does nothing" in capsys.readouterr().err
+    assert recording.instances[0].logins == []
+
+
+def test_a_refused_login_exits_nonzero(monkeypatch, capsys):
+    class Refused(RecordingComici):
+        def login(self, url, user_id, password):
+            msg = "refused the credentials"
+            raise LoginError(msg)
+
+    monkeypatch.setattr("getcomici.cli.Comici", Refused)
+    with pytest.raises(SystemExit) as excinfo:
+        main(["-u", "x", "-p", "y", "https://mangabu.jp/episodes/0"])
+
+    assert excinfo.value.code == 1
+    assert "refused the credentials" in capsys.readouterr().err
