@@ -90,6 +90,9 @@ jobs:
           draft: true
           files: release/*
           fail_on_unmatched_files: true
+      # `GITHUB_TOKEN` raises the `release: published` event but cannot start a
+      # workflow with it, so `release.yml` hangs off this run via `workflow_run`
+      # rather than off the event this step produces.
       - name: Publish the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
