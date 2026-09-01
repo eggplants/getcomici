@@ -27,6 +27,8 @@ Note: Redistribution of downloaded image data is prohibited. Please keep it to p
 
 ## Available Hosts
 
+<details>
+
 - <https://asacomi.jp>
 - <https://bibibi-comic.com>
 - <https://championcross.jp>
@@ -54,6 +56,8 @@ Note: Redistribution of downloaded image data is prohibited. Please keep it to p
 - <https://takecomic.jp>
 - <https://younganimal.com>
 - <https://youngchampion.jp>
+
+</details>
 
 ## Installation
 
