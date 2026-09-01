@@ -34,6 +34,31 @@ HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     ),
+    "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+    "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Linux"',
+}
+
+DOCUMENT_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+}
+API_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+}
+IMAGE_HEADERS = {
+    "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "Sec-Fetch-Dest": "image",
+    "Sec-Fetch-Mode": "no-cors",
+    "Sec-Fetch-Site": "cross-site",
 }
 
 # https://comici.jp/cooperation-site
@@ -275,7 +300,7 @@ class Comici:
         """
         origin = self._origin(url)
         auth = f"{origin}/api/auth"
-        csrf = self._session.get(f"{auth}/csrf", headers=HEADERS, timeout=30)
+        csrf = self._session.get(f"{auth}/csrf", headers=self._headers(url, API_HEADERS), timeout=30)
         csrf.raise_for_status()
 
         res = self._session.post(
@@ -287,12 +312,12 @@ class Comici:
                 "callbackUrl": f"{origin}/",
                 "json": "true",
             },
-            headers=HEADERS,
+            headers={**self._headers(url, API_HEADERS), "Origin": origin, "Referer": f"{origin}/"},
             timeout=30,
         )
         res.raise_for_status()
 
-        session = self._session.get(f"{auth}/session", headers=HEADERS, timeout=30)
+        session = self._session.get(f"{auth}/session", headers=self._headers(url, API_HEADERS), timeout=30)
         session.raise_for_status()
         token = (session.json() or {}).get("idToken")
         if not token:
@@ -305,10 +330,22 @@ class Comici:
         parsed = urlparse(url)
         return f"{parsed.scheme}://{parsed.netloc}"
 
-    def _headers(self, url: str) -> dict[str, str]:
-        """Headers for `url`, carrying the id token once its site is signed in."""
+    def _headers(self, url: str, kind: dict[str, str] | None = None) -> dict[str, str]:
+        """Headers for `url`, carrying the id token once its site is signed in.
+
+        Args:
+            url: The URL the headers are for.
+            kind: `DOCUMENT_HEADERS`, `API_HEADERS` or `IMAGE_HEADERS`, saying
+                what the request is fetching.
+
+        Returns:
+            The headers to send.
+        """
+        headers = {**HEADERS, **(kind or {})}
         token = self._id_tokens.get(self._origin(url))
-        return {**HEADERS, "Authorization": token} if token else dict(HEADERS)
+        if token:
+            headers["Authorization"] = token
+        return headers
 
     def episode_info(self, url: str) -> Episode:
         """Read the viewer parameters off an episode page.
@@ -322,7 +359,7 @@ class Comici:
         Raises:
             NotAComiciPageError: The page carries no Comici+ viewer.
         """
-        res = self._session.get(url, headers=self._headers(url), timeout=30)
+        res = self._session.get(url, headers=self._headers(url, DOCUMENT_HEADERS), timeout=30)
         res.raise_for_status()
         soup = BeautifulSoup(res.content, "html.parser")
 
@@ -402,7 +439,7 @@ class Comici:
         api_base = f"{parsed.scheme}://{parsed.netloc}/api"
         res = self._session.get(
             f"{api_base}/episodes/{episode_id}",
-            headers={**self._headers(url), "Referer": url},
+            headers={**self._headers(url, API_HEADERS), "Referer": url},
             timeout=30,
         )
         body = res.json() if res.ok else None
@@ -459,7 +496,7 @@ class Comici:
                 "page-to": page_to,
             },
             # Some sites (studio.booklista.co.jp) answer 403 without a site Referer.
-            headers={**self._headers(episode.url), "Referer": episode.url},
+            headers={**self._headers(episode.url, API_HEADERS), "Referer": episode.url},
             timeout=30,
         )
         res.raise_for_status()
@@ -518,7 +555,7 @@ class Comici:
     def _image(self, page: Page, referer: str) -> Image.Image:
         res = self._session.get(
             page["imageUrl"],
-            headers={**self._headers(referer), "Referer": referer},
+            headers={**self._headers(referer, IMAGE_HEADERS), "Referer": referer},
             timeout=60,
         )
         res.raise_for_status()
