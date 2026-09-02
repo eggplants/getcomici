@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from getcomici import __version__
-from getcomici.cli import check_url, main, parse_args
+from getcomici.cli import check_url, episode_urls, main, parse_args
 from getcomici.comici import ComiciError, LoginError, NeedPurchase, NotAComiciPageError
 
 
@@ -55,6 +55,13 @@ class RecordingComici:
     def is_valid_uri(url):
         return "mangabu.jp" in url
 
+    @staticmethod
+    def is_series(url):
+        return "/series/" in url
+
+    def series_urls(self, url):
+        return [f"https://mangabu.jp/episodes/feed{index}" for index in range(3)]
+
     def get(self, url, save_path=".", **_kwargs):
         self.gets.append(url)
         index = len(self.gets)
@@ -93,6 +100,84 @@ def test_unknown_host_warns_but_still_tries(recording, capsys):
 def test_quiet_prints_nothing(recording, capsys):
     main(["-q", "https://example.com/episodes/0"])
     assert capsys.readouterr().out == ""
+
+
+FEED_URL = "https://mangabu.jp/series/b167ea507d35f/rss"
+SERIES_URL = "https://mangabu.jp/series/b167ea507d35f/2"
+
+
+@pytest.mark.parametrize("url", [FEED_URL, SERIES_URL])
+def test_a_series_downloads_every_episode_it_lists(recording, capsys, url):
+    main([url])
+
+    assert recording.instances[0].gets == [
+        "https://mangabu.jp/episodes/feed0",
+        "https://mangabu.jp/episodes/feed1",
+        "https://mangabu.jp/episodes/feed2",
+    ]
+    assert "series: 3 episodes listed." in capsys.readouterr().out
+
+
+def test_bulk_does_nothing_for_a_series(recording, capsys):
+    main(["-b", FEED_URL])
+
+    # The listing already names every episode, so no next episode is followed.
+    assert len(recording.instances[0].gets) == 3
+    assert "-b does nothing for a series" in capsys.readouterr().err
+
+
+def test_episode_urls_leaves_an_episode_url_alone(recording):
+    assert episode_urls(recording(), "https://mangabu.jp/episodes/0", quiet=True) == [
+        "https://mangabu.jp/episodes/0",
+    ]
+
+
+def test_a_locked_episode_only_skips_itself_in_a_series(monkeypatch, capsys):
+    class SecondLocked(RecordingComici):
+        def get(self, url, save_path=".", **_kwargs):
+            self.gets.append(url)
+            if url.endswith("feed1"):
+                msg = "no '#comici-viewer' element"
+                raise NotAComiciPageError(msg)
+            return None, Path(save_path) / "ep", True
+
+    monkeypatch.setattr("getcomici.cli.Comici", SecondLocked)
+    main([FEED_URL])
+
+    captured = capsys.readouterr()
+    assert len(SecondLocked.instances[-1].gets) == 3
+    assert "skip: https://mangabu.jp/episodes/feed1 is not readable." in captured.err
+    assert "done." in captured.out
+
+
+def test_a_paid_episode_in_a_series_is_skipped(monkeypatch, capsys):
+    class Paywalled(RecordingComici):
+        def get(self, url, save_path=".", **_kwargs):
+            self.gets.append(url)
+            if url.endswith("feed0"):
+                warnings.warn("locked", NeedPurchase, stacklevel=1)
+            return None, Path(save_path) / "ep", True
+
+    monkeypatch.setattr("getcomici.cli.Comici", Paywalled)
+    main([FEED_URL])
+
+    captured = capsys.readouterr()
+    assert "skip: 'locked' needs a purchase or a login." in captured.err
+    assert len(Paywalled.instances[-1].gets) == 3
+
+
+def test_a_series_with_nothing_readable_exits_nonzero(monkeypatch, capsys):
+    class AllLocked(RecordingComici):
+        def get(self, url, save_path=".", **_kwargs):
+            msg = "no '#comici-viewer' element"
+            raise NotAComiciPageError(msg)
+
+    monkeypatch.setattr("getcomici.cli.Comici", AllLocked)
+    with pytest.raises(SystemExit) as excinfo:
+        main([FEED_URL])
+
+    assert excinfo.value.code == 1
+    assert "no episode in the series was readable" in capsys.readouterr().err
 
 
 def test_a_paid_episode_stops_the_run(monkeypatch, capsys):

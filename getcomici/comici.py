@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import re
 import warnings
 from dataclasses import dataclass
+from http import HTTPStatus
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 from urllib.parse import urljoin, urlparse
+from xml.etree import ElementTree
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
@@ -98,6 +101,17 @@ ROWS = 4
 TILES = COLUMNS * ROWS
 
 _VIEWER_ID = "comici-viewer"
+
+# A series feed, `<host>/series/<id>/rss`, listing the episodes newest first.
+_RSS_PATH = re.compile(r"^/series/[^/]+/rss/?$")
+
+# A series page: `<host>/series/<id>` on its own, its `/new` tab, or one `/<n>`
+# page of the episode list. The list is paginated and the feed only carries the
+# most recent episodes, so a whole series is read by walking `/1` upwards.
+_SERIES_PATH = re.compile(r"^/series/(?P<id>[^/]+)(?:/(?:new|[0-9]+))?/?$")
+
+# An episode link as a series page writes it, `<host>/episodes/<id>`.
+_EPISODE_PATH = re.compile(r"^/episodes/[^/]+/?$")
 
 # Sites that hand their images over unscrambled still go through `descramble`,
 # with a permutation that puts every tile back where it already was.
@@ -232,6 +246,20 @@ class Comici:
         """
         parsed = urlparse(url)
         return parsed.scheme == "https" and parsed.hostname in VALID_HOSTS
+
+    @staticmethod
+    def is_series(url: str) -> bool:
+        """Report whether `url` names a whole series rather than a single episode.
+
+        Args:
+            url: The URL to check.
+
+        Returns:
+            True for a `<host>/series/<id>` URL -- the feed, the series page,
+            its `/new` tab or a numbered page of it -- which `series_urls` reads.
+        """
+        path = urlparse(url).path
+        return _RSS_PATH.match(path) is not None or _SERIES_PATH.match(path) is not None
 
     def get(  # noqa: PLR0913
         self,
@@ -416,6 +444,121 @@ class Comici:
         body = self._contents_info(episode, 0, total - 1, member_jwt)
         pages: list[Page] = list(body.get("result") or [])
         return sorted(pages, key=lambda page: page["sort"])
+
+    def series_urls(self, url: str) -> list[str]:
+        """List every episode a series URL covers.
+
+        A `/rss` URL is read as the feed, every other series URL as the
+        paginated episode list; the two disagree on both order and coverage, so
+        which one was asked for decides what comes back.
+
+        Args:
+            url: A `/series/<id>` URL, with or without `/rss`, `/new` or a page
+                number on it.
+
+        Returns:
+            One episode URL per listed episode.
+        """
+        if _RSS_PATH.match(urlparse(url).path):
+            return self._feed_urls(url)
+        return self._listing_urls(url)
+
+    def _feed_urls(self, url: str) -> list[str]:
+        """List the episodes a series feed carries.
+
+        `<host>/series/<id>/rss` is a plain RSS 2.0 feed, newest episode first,
+        which is the order kept here. It only holds the most recent episodes,
+        where `_listing_urls` reaches the whole series. Its item links carry a
+        `utm_*` query the episode page has no use for.
+
+        Args:
+            url: The `/series/<id>/rss` URL.
+
+        Returns:
+            One episode URL per `<item>`, in the order the feed lists them.
+
+        Raises:
+            NotAComiciPageError: The feed lists no episode.
+        """
+        res = self._session.get(url, headers=self._headers(url, DOCUMENT_HEADERS), timeout=30)
+        res.raise_for_status()
+        root = ElementTree.fromstring(res.content)
+        urls = [
+            urljoin(url, href.split("?", 1)[0].split("#", 1)[0])
+            for href in ((link.text or "").strip() for link in root.iterfind("./channel/item/link"))
+            if href
+        ]
+        if not urls:
+            msg = f"the feed at {url} lists no episode."
+            raise NotAComiciPageError(msg)
+        return urls
+
+    def _listing_urls(self, url: str) -> list[str]:
+        """List every episode of a series by walking its numbered pages.
+
+        `/series/<id>/1` is the first page of the episode list, oldest episode
+        first, and the page after the last one answers 404. Whatever the given
+        URL pointed at -- the series page itself, its `/new` tab or a page in
+        the middle -- the walk starts at page 1, so the whole series comes back.
+
+        Args:
+            url: A `/series/<id>` URL, optionally with `/new` or a page number.
+
+        Returns:
+            One URL per episode, in listing order, without duplicates.
+
+        Raises:
+            NotAComiciPageError: The URL is no series page, or lists no episode.
+        """
+        parsed = urlparse(url)
+        match = _SERIES_PATH.match(parsed.path)
+        if match is None:
+            msg = f"{url} is not a series page."
+            raise NotAComiciPageError(msg)
+
+        base = f"{parsed.scheme}://{parsed.netloc}/series/{match['id']}"
+        urls: list[str] = []
+        seen: set[str] = set()
+        number = 1
+        while True:
+            page = f"{base}/{number}"
+            res = self._session.get(page, headers=self._headers(page, DOCUMENT_HEADERS), timeout=30)
+            if res.status_code != HTTPStatus.OK:
+                break
+            # A site that answers an out-of-range page number with the last page
+            # instead of a 404 would loop forever, so a page holding nothing new
+            # ends the walk as well.
+            fresh = [href for href in self._episode_links(res.content, page) if href not in seen]
+            if not fresh:
+                break
+            seen.update(fresh)
+            urls += fresh
+            number += 1
+
+        if not urls:
+            msg = f"the series at {base} lists no episode."
+            raise NotAComiciPageError(msg)
+        return urls
+
+    @staticmethod
+    def _episode_links(html: bytes, url: str) -> list[str]:
+        """The episode URLs a series page links to, in document order, deduplicated.
+
+        Args:
+            html: The series page.
+            url: The URL it was fetched from, to resolve relative links against.
+
+        Returns:
+            One absolute URL per episode linked from the page.
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        links: list[str] = []
+        for anchor in soup.find_all("a", href=True):
+            href = str(anchor["href"]).split("?", 1)[0].split("#", 1)[0]
+            absolute = urljoin(url, href)
+            if _EPISODE_PATH.match(urlparse(absolute).path) and absolute not in links:
+                links.append(absolute)
+        return links
 
     def _episode_from_api(self, url: str) -> Episode:
         """Read an episode that renders its viewer only after hydration.

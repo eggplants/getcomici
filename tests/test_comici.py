@@ -35,10 +35,11 @@ EPISODE_HTML = """
 
 
 class FakeResponse:
-    def __init__(self, content=b"", payload=None, ok=True):
+    def __init__(self, content=b"", payload=None, ok=True, status_code=HTTPStatus.OK):
         self.content = content
         self._payload = payload
         self.ok = ok
+        self.status_code = status_code
 
     def raise_for_status(self):
         return None
@@ -139,6 +140,119 @@ def test_episode_info_reads_the_viewer_element():
     assert episode.series_title == "IRUKA"
     assert episode.episode_title == "prologue"
     assert episode.next_url == "https://mangabu.jp/episodes/def456"
+
+
+SERIES_RSS = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<title><![CDATA[IRUKA]]></title>
+<link>https://takecomic.jp/series/b167ea507d35f/new</link>
+<item><title><![CDATA[2話]]></title>
+<link>https://takecomic.jp/episodes/newest/?utm_source=rss&amp;utm_medium=referral</link></item>
+<item><title><![CDATA[1話]]></title>
+<link>https://takecomic.jp/episodes/older/</link></item>
+</channel></rss>
+"""
+
+
+SERIES_PAGE = """
+<html><body><ul>
+<li><a href="/episodes/{first}"><img src="/thumb.jpg"></a><a href="/episodes/{first}">1</a></li>
+<li><a href="/episodes/{second}">2</a></li>
+<li><a href="/series/b167ea507d35f/new">new</a></li>
+</ul></body></html>
+"""
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://takecomic.jp/series/b167ea507d35f/rss", True),
+        ("https://takecomic.jp/series/b167ea507d35f/rss/", True),
+        ("https://takecomic.jp/series/b167ea507d35f", True),
+        ("https://takecomic.jp/series/b167ea507d35f/new", True),
+        ("https://takecomic.jp/series/b167ea507d35f/2", True),
+        ("https://takecomic.jp/series/b167ea507d35f/2/extra", False),
+        ("https://takecomic.jp/episodes/6b35483f82ab3", False),
+    ],
+)
+def test_is_series(url, expected):
+    assert Comici.is_series(url) is expected
+
+
+def listing_session(pages=2):
+    """A site whose series list holds `pages` pages of two episodes each."""
+    routes = {
+        f"/series/b167ea507d35f/{number}": FakeResponse(
+            content=SERIES_PAGE.format(first=f"p{number}a", second=f"p{number}b").encode(),
+        )
+        for number in range(1, pages + 1)
+    }
+    routes["/series/"] = FakeResponse(status_code=HTTPStatus.NOT_FOUND)
+    return FakeSession(routes)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://takecomic.jp/series/b167ea507d35f",
+        "https://takecomic.jp/series/b167ea507d35f/new",
+        "https://takecomic.jp/series/b167ea507d35f/2",
+    ],
+)
+def test_series_urls_walks_the_listing_from_page_one(url):
+    session = listing_session()
+    urls = Comici(session).series_urls(url)
+
+    # Whatever the URL pointed at, the walk starts at page 1 and ends on the 404.
+    assert [call[0] for call in session.calls] == [
+        "https://takecomic.jp/series/b167ea507d35f/1",
+        "https://takecomic.jp/series/b167ea507d35f/2",
+        "https://takecomic.jp/series/b167ea507d35f/3",
+    ]
+    assert urls == [
+        "https://takecomic.jp/episodes/p1a",
+        "https://takecomic.jp/episodes/p1b",
+        "https://takecomic.jp/episodes/p2a",
+        "https://takecomic.jp/episodes/p2b",
+    ]
+
+
+def test_series_urls_stops_when_a_page_repeats_itself():
+    # A site that clamps an out-of-range page number to the last page instead of
+    # answering 404 would otherwise be walked forever.
+    same = FakeResponse(content=SERIES_PAGE.format(first="only-a", second="only-b").encode())
+    session = FakeSession({"/series/": same})
+    urls = Comici(session).series_urls("https://takecomic.jp/series/b167ea507d35f")
+
+    assert len(session.calls) == 2
+    assert urls == [
+        "https://takecomic.jp/episodes/only-a",
+        "https://takecomic.jp/episodes/only-b",
+    ]
+
+
+def test_series_urls_rejects_a_listing_without_episodes():
+    session = FakeSession({"/series/": FakeResponse(content=b"<html><body>nope</body></html>")})
+    with pytest.raises(NotAComiciPageError, match="lists no episode"):
+        Comici(session).series_urls("https://takecomic.jp/series/b167ea507d35f/new")
+
+
+def test_series_urls_lists_every_episode_in_feed_order():
+    session = FakeSession({"/series/": FakeResponse(content=SERIES_RSS.encode())})
+    urls = Comici(session).series_urls("https://takecomic.jp/series/b167ea507d35f/rss")
+
+    # Feed order is newest first, and the item links keep no utm query.
+    assert urls == [
+        "https://takecomic.jp/episodes/newest/",
+        "https://takecomic.jp/episodes/older/",
+    ]
+
+
+def test_series_urls_rejects_a_feed_without_episodes():
+    empty = SERIES_RSS[: SERIES_RSS.index("<item>")] + "</channel></rss>"
+    session = FakeSession({"/series/": FakeResponse(content=empty.encode())})
+    with pytest.raises(NotAComiciPageError, match="lists no episode"):
+        Comici(session).series_urls("https://takecomic.jp/series/b167ea507d35f/rss")
 
 
 def test_episode_info_rejects_a_page_without_a_viewer():

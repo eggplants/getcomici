@@ -89,6 +89,10 @@ lint.ignore = [
 lint.per-file-ignores."getcomici/cli.py" = [
   "T201", # `print` found
 ]
+lint.per-file-ignores."getcomici/comici.py" = [
+  "ICN001", # `xml.etree.ElementTree` is spelled out for its single call
+  "S314",   # the parsed XML is the site's own series feed, fetched over https
+]
 lint.per-file-ignores."packaging/entrypoint.py" = [
   "INP001", # Implicit namespace package (frozen entry point, not importable content)
 ]

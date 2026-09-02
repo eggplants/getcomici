@@ -24,6 +24,15 @@ Note: Redistribution of downloaded image data is prohibited. Please keep it to p
 
 - `<host>/episodes/<id>`
   - e.g. <https://mangabu.jp/episodes/71f48a2c352ed>
+- `<host>/series/<id>/rss`
+  - e.g. <https://takecomic.jp/series/b167ea507d35f/rss>
+  - Every episode the feed lists is downloaded, newest first.
+  - The feed only carries the most recent episodes; use the series page below for the whole series.
+- `<host>/series/<id>`, with or without `/new` or a page number on it
+  - e.g. <https://takecomic.jp/series/3f846451aff2d>, <https://takecomic.jp/series/3f846451aff2d/new>,
+    <https://takecomic.jp/series/3f846451aff2d/2>
+  - The episode list is read from page 1 upwards until a page 404s, and every episode linked from it
+    is downloaded, oldest first.
 
 ## Available Hosts
 

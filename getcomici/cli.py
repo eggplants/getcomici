@@ -65,7 +65,7 @@ def parse_args(args: list[str] | None = None) -> Namespace:
             max_help_position=40,
         ),
     )
-    parser.add_argument("url", type=check_url, help="episode url")
+    parser.add_argument("url", type=check_url, help="episode url, or a series url to take every episode from")
     parser.add_argument("-b", "--bulk", action="store_true", help="follow every next episode")
     parser.add_argument("-d", "--savedir", metavar="DIR", default=".", help="directory to save into")
     parser.add_argument("-f", "--first", action="store_true", help="download only the first page")
@@ -76,6 +76,84 @@ def parse_args(args: list[str] | None = None) -> Namespace:
     parser.add_argument("-q", "--quiet", action="store_true", help="disable console output")
     parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args(args)
+
+
+def episode_urls(comici: Comici, url: str, *, quiet: bool) -> list[str]:
+    """The episodes to download: everything a series lists, or the URL itself.
+
+    Args:
+        comici: The client to read the series with.
+        url: The URL given on the command line.
+        quiet: Print nothing.
+
+    Returns:
+        One episode URL per download.
+    """
+    if not Comici.is_series(url):
+        return [url]
+    urls = comici.series_urls(url)
+    if not quiet:
+        print(f"series: {len(urls)} episodes listed.")
+    return urls
+
+
+def download(comici: Comici, queue: list[str], parsed: Namespace, *, series: bool) -> int:
+    """Download every queued episode.
+
+    Args:
+        comici: The client to download with.
+        queue: The episodes to download, extended with the next episode of each
+            when `-b` walks a chain.
+        parsed: The parsed command line.
+        series: The queue came from a series listing, whose episodes stand on
+            their own: a locked one only skips itself, where a chain has to end
+            there.
+
+    Returns:
+        How many episodes were downloaded or found already there.
+    """
+    done = 0
+    while queue:
+        url = queue.pop(0)
+        if not parsed.quiet:
+            print("get:", url)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", NeedPurchase)
+            try:
+                next_url, save_dir, saved = comici.get(
+                    url,
+                    save_path=parsed.savedir,
+                    overwrite=parsed.overwrite,
+                    only_first=parsed.first,
+                    save_metadata=parsed.metadata,
+                    print_log=not parsed.quiet,
+                )
+            except NeedPurchase as exc:
+                print(
+                    f"{'skip' if series else 'stop'}: '{exc.args[0]}' needs a purchase or a login.",
+                    file=sys.stderr,
+                )
+                if series:
+                    continue
+                break
+            except NotAComiciPageError:
+                # Locked episodes serve a purchase page with no viewer on it,
+                # which is where a bulk run is meant to end rather than fail.
+                if not series and not done:
+                    raise
+                print(
+                    f"skip: {url} is not readable." if series else "stop: the next episode is not readable.",
+                    file=sys.stderr,
+                )
+                if series:
+                    continue
+                break
+        done += 1
+        if not parsed.quiet:
+            print("saved:" if saved else "skipped (already there):", save_dir)
+        if parsed.bulk and not series and next_url:
+            queue.append(next_url)
+    return done
 
 
 def main(args: list[str] | None = None) -> None:
@@ -96,42 +174,21 @@ def main(args: list[str] | None = None) -> None:
     if not parsed.quiet and not Comici.is_valid_uri(parsed.url):
         print(f"warning: {urlparse(parsed.url).hostname} is not a known Comici+ site, trying anyway.")
 
-    next_url: str | None = parsed.url
-    first = True
+    # A series listing already names every episode, so there is no next episode to follow.
+    series = Comici.is_series(parsed.url)
+    if series and parsed.bulk:
+        print("warning: -b does nothing for a series, every listed episode is downloaded.", file=sys.stderr)
+
     try:
-        while next_url:
-            if not parsed.quiet:
-                print("get:", next_url)
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", NeedPurchase)
-                try:
-                    next_url, save_dir, saved = comici.get(
-                        next_url,
-                        save_path=parsed.savedir,
-                        overwrite=parsed.overwrite,
-                        only_first=parsed.first,
-                        save_metadata=parsed.metadata,
-                        print_log=not parsed.quiet,
-                    )
-                except NeedPurchase as exc:
-                    print(f"stop: '{exc.args[0]}' needs a purchase or a login.", file=sys.stderr)
-                    break
-                except NotAComiciPageError:
-                    # Locked episodes serve a purchase page with no viewer on it,
-                    # which is where a bulk run is meant to end rather than fail.
-                    if first:
-                        raise
-                    print("stop: the next episode is not readable.", file=sys.stderr)
-                    break
-            if not parsed.quiet:
-                print("saved:" if saved else "skipped (already there):", save_dir)
-            if not parsed.bulk:
-                break
-            first = False
+        queue = episode_urls(comici, parsed.url, quiet=parsed.quiet)
+        done = download(comici, queue, parsed, series=series)
     except ComiciError as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
+    if series and not done:
+        print("error: no episode in the series was readable.", file=sys.stderr)
+        raise SystemExit(1)
     if not parsed.quiet:
         print("done.")
 
