@@ -193,7 +193,7 @@ getcomici    </h1>
 <ul>
 <li><code>&lt;host&gt;/episodes/&lt;id&gt;</code>
 <ul>
-<li>e.g. <a href="https://mangabu.jp/episodes/71f48a2c352ed"><a href="https://mangabu.jp/episodes/71f48a2c352ed">https://mangabu.jp/episodes/71f48a2c352ed</a></a></li>
+<li>e.g. <a href="https://takecomic.jp/episodes/74f33031e13cd"><a href="https://takecomic.jp/episodes/74f33031e13cd">https://takecomic.jp/episodes/74f33031e13cd</a></a></li>
 </ul></li>
 <li><code>&lt;host&gt;/series/&lt;id&gt;/rss</code>
 <ul>
@@ -269,16 +269,16 @@ pip<span class="w"> </span>install<span class="w"> </span>getcomici
 <pre><span></span><code>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/eggplants/getcomici
 
 docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">:/work"</span><span class="w"> </span>-w<span class="w"> </span>/work<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>ghcr.io/eggplants/getcomici<span class="w"> </span>https://mangabu.jp/episodes/71f48a2c352ed
+<span class="w">  </span>ghcr.io/eggplants/getcomici<span class="w"> </span>https://takecomic.jp/episodes/74f33031e13cd
 </code></pre>
 </div>
 
 <h2 id="cli">CLI</h2>
 
-<pre><code>$ cget https://mangabu.jp/episodes/71f48a2c352ed
-get: https://mangabu.jp/episodes/71f48a2c352ed
-  Downloading... ━━━━━━━━━━━━ 100% ( 18/18 pages ) remain: 0:00:00 spent: 0:00:02
-saved: IRUKA/prologue
+<pre><code>$ cget https://takecomic.jp/episodes/74f33031e13cd
+get: https://takecomic.jp/episodes/74f33031e13cd
+  Downloading... ━━━━━━━━━━━━ 100% ( 31/31 pages ) remain: 0:00:00 spent: 0:00:02
+saved: メイドインアビス/1話
 done.
 </code></pre>
 
@@ -289,7 +289,7 @@ done.
 
 <span class="n">comici</span> <span class="o">=</span> <span class="n">Comici</span><span class="p">()</span>
 <span class="n">next_url</span><span class="p">,</span> <span class="n">save_dir</span><span class="p">,</span> <span class="n">saved</span> <span class="o">=</span> <span class="n">comici</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
-    <span class="s2">"https://mangabu.jp/episodes/71f48a2c352ed"</span><span class="p">,</span>
+    <span class="s2">"https://takecomic.jp/episodes/74f33031e13cd"</span><span class="p">,</span>
     <span class="n">save_path</span><span class="o">=</span><span class="s2">"out"</span><span class="p">,</span>
 <span class="p">)</span>
 </code></pre>
