@@ -489,16 +489,48 @@ def test_pages_uses_the_token_the_page_rendered():
     assert session.calls[-1][1]["user-id"] == "page-jwt"
 
 
+def test_pages_sends_the_content_id_the_page_carried():
+    html = EPISODE_HTML.replace(
+        'data-api-domain="/api"',
+        'data-api-domain="/api" data-content-id="37"',
+    )
+    session = FakeSession(
+        {
+            "/episodes/": FakeResponse(content=html.encode()),
+            "contentsInfo": FakeResponse(payload={"totalPages": 1, "result": []}),
+        },
+    )
+    comici = Comici(session)
+    comici.pages(comici.episode_info("https://rimacomiplus.jp/digitalmargaret/episodes/9e628415ccfc2"))
+
+    assert session.calls[-1][1]["contentId"] == "37"
+
+
+def test_pages_omits_the_content_id_when_the_page_had_none():
+    session = FakeSession(
+        {
+            "/episodes/": FakeResponse(content=EPISODE_HTML.encode()),
+            "contentsInfo": FakeResponse(payload={"totalPages": 1, "result": []}),
+        },
+    )
+    comici = Comici(session)
+    comici.pages(comici.episode_info("https://mangabu.jp/episodes/71f48a2c352ed"))
+
+    assert "contentId" not in session.calls[-1][1]
+
+
 # One episode per known site that is free to read without an account.
 TEST_URLS: dict[str, str] = {
     "asacomi.jp": "https://asacomi.jp/episodes/d689876764c05",
     "bibibi-comic.com": "https://bibibi-comic.com/episodes/3fc263ee98e51",
+    "bigcomics.jp": "https://bigcomics.jp/episodes/751a9656f6f2e",
     "championcross.jp": "https://championcross.jp/episodes/f79c98b6ede83",
     "comic-growl.com": "https://comic-growl.com/episodes/ae67f63a142b8",
     "comic-room-base.com": "https://comic-room-base.com/episodes/49e48489486b7",
     "comic.j-nbooks.jp": "https://comic.j-nbooks.jp/episodes/4c9428882f24a",
     "comicpash.jp": "https://comicpash.jp/episodes/3e051ee5500c3",
     "comicride.jp": "https://comicride.jp/episodes/e7137bf1e8b27",
+    "comics.comici.jp": "https://comics.comici.jp/comicicomics/episodes/09f3f099e119d",
     "comics.manga-bang.com": "https://comics.manga-bang.com/episodes/3e3efa60aa9b9",
     "comirela.com": "https://comirela.com/episodes/78d565d1005a1",
     "ebookstore.corkagency.com": "https://ebookstore.corkagency.com/episodes/ad51b31190681",
@@ -514,6 +546,7 @@ TEST_URLS: dict[str, str] = {
     "mangaspa.nikkan-spa.jp": "https://mangaspa.nikkan-spa.jp/episodes/5fbbe0d610d7b",
     "namicomic.jp": "https://namicomic.jp/episodes/6372afa2ba503",
     "piacomic.jp": "https://piacomic.jp/episodes/d3d3e7ba955dd",
+    "rimacomiplus.jp": "https://rimacomiplus.jp/digitalmargaret/episodes/9e628415ccfc2",
     "studio.booklista.co.jp": "https://studio.booklista.co.jp/episodes/de1ce4d9cc0ae",
     "takecomic.jp": "https://takecomic.jp/episodes/6b35483f82ab3",
     "younganimal.com": "https://younganimal.com/episodes/b790a79dd70a7",

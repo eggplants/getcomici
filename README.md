@@ -40,12 +40,14 @@ Retrieve and save images from manga distribution sites using [Comici+](https://c
 
 - <https://asacomi.jp>
 - <https://bibibi-comic.com>
+- <https://bigcomics.jp>
 - <https://championcross.jp>
 - <https://comic-growl.com>
 - <https://comic-room-base.com>
 - <https://comic.j-nbooks.jp>
 - <https://comicpash.jp>
 - <https://comicride.jp>
+- <https://comics.comici.jp>
 - <https://comics.manga-bang.com>
 - <https://comirela.com>
 - <https://ebookstore.corkagency.com>
@@ -61,6 +63,7 @@ Retrieve and save images from manga distribution sites using [Comici+](https://c
 - <https://mangaspa.nikkan-spa.jp>
 - <https://namicomic.jp>
 - <https://piacomic.jp>
+- <https://rimacomiplus.jp>
 - <https://studio.booklista.co.jp>
 - <https://takecomic.jp>
 - <https://younganimal.com>

@@ -68,12 +68,14 @@ IMAGE_HEADERS = {
 VALID_HOSTS = (
     "asacomi.jp",
     "bibibi-comic.com",
+    "bigcomics.jp",
     "championcross.jp",
     "comic-growl.com",
     "comic-room-base.com",
     "comic.j-nbooks.jp",
     "comicpash.jp",
     "comicride.jp",
+    "comics.comici.jp",
     "comics.manga-bang.com",
     "comirela.com",
     "ebookstore.corkagency.com",
@@ -89,6 +91,7 @@ VALID_HOSTS = (
     "mangaspa.nikkan-spa.jp",
     "namicomic.jp",
     "piacomic.jp",
+    "rimacomiplus.jp",
     "studio.booklista.co.jp",
     "takecomic.jp",
     "younganimal.com",
@@ -156,6 +159,11 @@ class Episode:
     episode_title: str
     next_url: str | None
     member_jwt: str = ""
+    # `data-content-id`, which sites that serve several imprints off one domain
+    # (rimacomiplus.jp) set. `contentsInfo` answers `bad contentId` without it;
+    # sites that leave the attribute off reject the parameter, so it is only
+    # ever sent when the page carried one.
+    content_id: str = ""
     # Pages the episode JSON carried itself, on sites that render the viewer
     # client-side. None when the page had a viewer and `pages` has to ask
     # `contentsInfo` for them.
@@ -415,6 +423,7 @@ class Comici:
             url=url,
             viewer_id=viewer_id,
             member_jwt=str(viewer.attrs.get("data-member-jwt", "")),
+            content_id=str(viewer.attrs.get("data-content-id", "")),
             api_base=api_base,
             series_title=series_title,
             episode_title=episode_title,
@@ -630,14 +639,17 @@ class Comici:
         page_to: int,
         member_jwt: str = "",
     ) -> dict[str, Any]:
+        params: dict[str, str | int] = {
+            "user-id": member_jwt,
+            "comici-viewer-id": episode.viewer_id,
+            "page-from": page_from,
+            "page-to": page_to,
+        }
+        if episode.content_id:
+            params["contentId"] = episode.content_id
         res = self._session.get(
             f"{episode.api_base}/book/contentsInfo",
-            params={
-                "user-id": member_jwt,
-                "comici-viewer-id": episode.viewer_id,
-                "page-from": page_from,
-                "page-to": page_to,
-            },
+            params=params,
             # Some sites (studio.booklista.co.jp) answer 403 without a site Referer.
             headers={**self._headers(episode.url, API_HEADERS), "Referer": episode.url},
             timeout=30,
