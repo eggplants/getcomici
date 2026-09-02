@@ -23,7 +23,7 @@ Note: Redistribution of downloaded image data is prohibited. Please keep it to p
 ## Valid URL Formats
 
 - `<host>/episodes/<id>`
-  - e.g. <https://mangabu.jp/episodes/71f48a2c352ed>
+  - e.g. <https://takecomic.jp/episodes/74f33031e13cd>
 - `<host>/series/<id>/rss`
   - e.g. <https://takecomic.jp/series/b167ea507d35f/rss>
   - Every episode the feed lists is downloaded, newest first.
@@ -90,16 +90,16 @@ pip install getcomici
 docker pull ghcr.io/eggplants/getcomici
 
 docker run --rm -v "$PWD:/work" -w /work \
-  ghcr.io/eggplants/getcomici https://mangabu.jp/episodes/71f48a2c352ed
+  ghcr.io/eggplants/getcomici https://takecomic.jp/episodes/74f33031e13cd
 ```
 
 ## CLI
 
 ```shellsession
-$ cget https://mangabu.jp/episodes/71f48a2c352ed
-get: https://mangabu.jp/episodes/71f48a2c352ed
-  Downloading... ━━━━━━━━━━━━ 100% ( 18/18 pages ) remain: 0:00:00 spent: 0:00:02
-saved: IRUKA/prologue
+$ cget https://takecomic.jp/episodes/74f33031e13cd
+get: https://takecomic.jp/episodes/74f33031e13cd
+  Downloading... ━━━━━━━━━━━━ 100% ( 31/31 pages ) remain: 0:00:00 spent: 0:00:02
+saved: メイドインアビス/1話
 done.
 ```
 
@@ -110,7 +110,7 @@ from getcomici import Comici
 
 comici = Comici()
 next_url, save_dir, saved = comici.get(
-    "https://mangabu.jp/episodes/71f48a2c352ed",
+    "https://takecomic.jp/episodes/74f33031e13cd",
     save_path="out",
 )
 ```
