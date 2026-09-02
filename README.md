@@ -18,7 +18,7 @@
 
 Retrieve and save images from manga distribution sites using [Comici+](https://comici.co.jp/business/comici-plus).
 
-Note: Redistribution of downloaded image data is prohibited. Please keep it to private use.
+*Note: Redistribution of downloaded image data is prohibited. Please keep it to private use.*
 
 ## Valid URL Formats
 
