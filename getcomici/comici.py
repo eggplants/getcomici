@@ -572,10 +572,12 @@ class Comici:
     def _episode_from_api(self, url: str) -> Episode:
         """Read an episode that renders its viewer only after hydration.
 
-        Newer sites (ebookstore.corkagency.com) ship an episode page with no
-        `#comici-viewer` element on it, and their `/api/episodes/{id}` hands the
-        page images over directly, already unscrambled, instead of a viewer id
-        to look up with `contentsInfo`.
+        Newer sites ship an episode page with no `#comici-viewer` element on
+        it and describe the episode through `/api/episodes/{id}` instead. Its
+        `content` blocks either hand the page images over directly, already
+        unscrambled (ebookstore.corkagency.com), or carry one `viewer` block
+        naming the viewer id to look up with `contentsInfo` (championcross.jp).
+        An episode the account may not read has no `content` at all.
 
         Args:
             url: The episode URL.
@@ -603,15 +605,25 @@ class Comici:
         series = episode.get("series") or {}
         summary = episode.get("summary") or {}
         next_id = str(episode.get("nextEpisodeId") or "")
+        viewer_id = self._viewer_block_id(episode)
         return Episode(
             url=url,
-            viewer_id=str(episode.get("id") or episode_id),
+            viewer_id=viewer_id or str(episode.get("id") or episode_id),
             api_base=api_base,
             series_title=str(series.get("name") or "").strip() or episode_id,
             episode_title=str(summary.get("title") or "").strip() or episode_id,
             next_url=urljoin(url, next_id) if next_id else None,
-            inline_pages=self._inline_pages(episode),
+            content_id=str(episode.get("contentId") or "") if viewer_id else "",
+            inline_pages=None if viewer_id else self._inline_pages(episode),
         )
+
+    @staticmethod
+    def _viewer_block_id(episode: dict[str, Any]) -> str:
+        """The viewer id a `viewer` content block names, or "" when the JSON has none."""
+        for node in episode.get("content") or []:
+            if isinstance(node, dict) and node.get("type") == "viewer" and node.get("viewerId"):
+                return str(node["viewerId"])
+        return ""
 
     @staticmethod
     def _inline_pages(episode: dict[str, Any]) -> tuple[Page, ...]:

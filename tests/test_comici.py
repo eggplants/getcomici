@@ -314,6 +314,54 @@ def test_inline_pages_skip_non_image_blocks_and_never_scramble():
     assert not [url for url, _ in session.calls if "contentsInfo" in url]
 
 
+VIEWER_BLOCK_API = {
+    "episode": {
+        "id": "0071b2c5d21f4",
+        "contentId": 20,
+        "nextEpisodeId": "",
+        "series": {"name": "僕の心のヤバイやつ"},
+        "summary": {"title": "Karte.16"},
+        "content": [{"type": "viewer", "viewerId": "73d687e4494a21d6"}],
+    },
+}
+
+
+def test_a_viewer_block_is_looked_up_with_contents_info():
+    """championcross.jp hands a viewer id over in the episode JSON, not the images."""
+    pages = [{"imageUrl": "u1", "scramble": "[]", "sort": 0, "width": 8, "height": 8, "expiresOn": 0}]
+    session = FakeSession(
+        {
+            "/api/episodes/": FakeResponse(payload=VIEWER_BLOCK_API),
+            "/episodes/": FakeResponse(content=b"<html><body>hydrated later</body></html>"),
+            "contentsInfo": FakeResponse(payload={"totalPages": 1, "result": pages}),
+        },
+    )
+    comici = Comici(session)
+    episode = comici.episode_info("https://championcross.jp/episodes/0071b2c5d21f4")
+
+    assert episode.viewer_id == "73d687e4494a21d6"
+    assert episode.content_id == "20"
+    assert episode.inline_pages is None
+    assert comici.pages(episode) == pages
+    sent = [params for url, params in session.calls if "contentsInfo" in url]
+    assert sent
+    assert all(params["comici-viewer-id"] == "73d687e4494a21d6" for params in sent)
+    assert all(params["contentId"] == "20" for params in sent)
+
+
+def test_an_episode_without_content_is_not_readable():
+    """The same site answers a locked episode with an empty `content`."""
+    locked = {"episode": {**VIEWER_BLOCK_API["episode"], "content": []}}
+    session = FakeSession(
+        {
+            "/api/episodes/": FakeResponse(payload=locked),
+            "/episodes/": FakeResponse(content=b"<html><body>hydrated later</body></html>"),
+        },
+    )
+    comici = Comici(session)
+    assert comici.pages(comici.episode_info("https://championcross.jp/episodes/0071b2c5d21f4")) == []
+
+
 def test_episode_info_without_a_next_episode():
     html = EPISODE_HTML.replace('data-next-episode-id="def456"', 'data-next-episode-id=""')
     session = FakeSession({"/episodes/": FakeResponse(content=html.encode())})
