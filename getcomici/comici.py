@@ -140,12 +140,12 @@ class NeedPurchase(Warning):
 class Page(TypedDict):
     """One page as `book/contentsInfo` describes it."""
 
-    imageUrl: str  # noqa: N815 (mirrors the API's own spelling)
+    imageUrl: str
     scramble: str
     sort: int
     width: int
     height: int
-    expiresOn: int  # noqa: N815 (mirrors the API's own spelling)
+    expiresOn: int
 
 
 @dataclass(frozen=True)

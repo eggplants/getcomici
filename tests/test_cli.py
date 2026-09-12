@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -41,7 +42,7 @@ def test_version_flag_prints_the_version(capsys):
 class RecordingComici:
     """Stands in for `Comici`, walking a canned chain of episodes."""
 
-    instances: list[RecordingComici] = []
+    instances: ClassVar[list[RecordingComici]] = []
 
     def __init__(self, *_args, **_kwargs):
         self.gets: list[str] = []
