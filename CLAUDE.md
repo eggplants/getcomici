@@ -60,9 +60,9 @@ Prefer a targeted `lint.per-file-ignores` entry with a comment over a scattered 
 - **`getcomici/cli.py`** -- argparse entry point (`getcomici`).
   `main()` takes an optional argument list so the tests can drive it without touching `sys.argv`.
   Any https URL is accepted, since `VALID_HOSTS` is a known-sites hint rather than a
-  gate -- the page either has a viewer on it or it does not. A locked episode reached
-  part-way through a `-b` run ends the run cleanly; the same failure on the first URL
-  exits non-zero.
+  gate -- the page either has a viewer on it or it does not. A paywalled episode in a
+  `-b` run is skipped and the chain continues from its next episode; an episode that
+  serves no viewer at all ends the run cleanly, or exits non-zero when it is the first URL.
 - **`getcomici/__main__.py`** -- makes `python -m getcomici` work.
 
 ## Versioning and releases

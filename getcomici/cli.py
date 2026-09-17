@@ -106,8 +106,7 @@ def download(comici: Comici, queue: list[str], parsed: Namespace, *, series: boo
             when `-b` walks a chain.
         parsed: The parsed command line.
         series: The queue came from a series listing, whose episodes stand on
-            their own: a locked one only skips itself, where a chain has to end
-            there.
+            their own, so the next episode is never followed.
 
     Returns:
         How many episodes were downloaded or found already there.
@@ -129,13 +128,12 @@ def download(comici: Comici, queue: list[str], parsed: Namespace, *, series: boo
                     print_log=not parsed.quiet,
                 )
             except NeedPurchase as exc:
-                print(
-                    f"{'skip' if series else 'stop'}: '{exc.args[0]}' needs a purchase or a login.",
-                    file=sys.stderr,
-                )
-                if series:
-                    continue
-                break
+                # A paywalled episode still names its next episode, so a bulk
+                # run can step over it and carry on down the chain.
+                print(f"skip: '{exc.args[0]}' needs a purchase or a login.", file=sys.stderr)
+                if parsed.bulk and not series and exc.next_url:
+                    queue.append(exc.next_url)
+                continue
             except NotAComiciPageError:
                 # Locked episodes serve a purchase page with no viewer on it,
                 # which is where a bulk run is meant to end rather than fail.

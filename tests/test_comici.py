@@ -16,6 +16,7 @@ from getcomici.comici import (
     Comici,
     ComiciError,
     LoginError,
+    NeedPurchase,
     NotAComiciPageError,
     descramble,
     parse_scramble,
@@ -459,6 +460,25 @@ def test_get_writes_descrambled_pages_and_metadata(tmp_path):
     assert save_dir == tmp_path / "IRUKA" / "prologue"
     assert (save_dir / "0.jpg").exists()
     assert json.loads((save_dir / "metadata.json").read_text(encoding="utf-8"))[0]["sort"] == 0
+
+
+def test_get_warns_with_the_next_url_when_nothing_is_readable(tmp_path):
+    session = FakeSession(
+        {
+            "/episodes/": FakeResponse(content=EPISODE_HTML.encode()),
+            "contentsInfo": FakeResponse(payload={"totalPages": 0, "result": []}),
+        },
+    )
+
+    with pytest.warns(NeedPurchase) as record:
+        next_url, _, saved = Comici(session).get("https://mangabu.jp/episodes/71f48a2c352ed", tmp_path)
+
+    warning = record[0].message
+    assert isinstance(warning, NeedPurchase)
+    assert saved is False
+    assert next_url == "https://mangabu.jp/episodes/def456"
+    assert warning.next_url == next_url
+    assert str(warning) == "prologue"
 
 
 def test_get_skips_an_existing_directory(tmp_path):

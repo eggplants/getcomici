@@ -135,7 +135,15 @@ class LoginError(ComiciError):
 
 
 class NeedPurchase(Warning):
-    """The episode is not readable without buying it or logging in."""
+    """The episode is not readable without buying it or logging in.
+
+    Carries the next episode's URL, so a bulk run can step over the locked
+    episode instead of ending there.
+    """
+
+    def __init__(self, episode_title: str, next_url: str | None = None) -> None:
+        super().__init__(episode_title)
+        self.next_url = next_url
 
 
 class Page(TypedDict):
@@ -301,7 +309,7 @@ class Comici:
 
         pages = self.pages(episode)
         if not pages:
-            warnings.warn(episode.episode_title, NeedPurchase, stacklevel=2)
+            warnings.warn(NeedPurchase(episode.episode_title, episode.next_url), stacklevel=2)
             return episode.next_url, save_dir, False
 
         save_dir.mkdir(parents=True, exist_ok=True)

@@ -181,14 +181,50 @@ def test_a_series_with_nothing_readable_exits_nonzero(monkeypatch, capsys):
     assert "no episode in the series was readable" in capsys.readouterr().err
 
 
-def test_a_paid_episode_stops_the_run(monkeypatch, capsys):
+def test_a_paid_episode_without_a_next_ends_the_run(monkeypatch, capsys):
     class Paywalled(RecordingComici):
         def get(self, url, save_path=".", **_kwargs):
-            warnings.warn("locked", NeedPurchase, stacklevel=1)
+            warnings.warn(NeedPurchase("locked"), stacklevel=1)
             raise AssertionError
 
     monkeypatch.setattr("getcomici.cli.Comici", Paywalled)
     main(["-b", "https://mangabu.jp/episodes/0"])
+    captured = capsys.readouterr()
+    assert "skip: 'locked' needs a purchase or a login." in captured.err
+    assert "done." in captured.out
+
+
+def test_a_paid_episode_in_a_bulk_run_is_stepped_over(monkeypatch, capsys):
+    class PaywalledSecond(RecordingComici):
+        def get(self, url, save_path=".", **_kwargs):
+            self.gets.append(url)
+            if url.endswith("/1"):
+                warnings.warn(NeedPurchase("locked", "https://mangabu.jp/episodes/2"), stacklevel=1)
+                raise AssertionError
+            if url.endswith("/2"):
+                return None, Path(save_path) / "ep2", True
+            return "https://mangabu.jp/episodes/1", Path(save_path) / "ep0", True
+
+    monkeypatch.setattr("getcomici.cli.Comici", PaywalledSecond)
+    main(["-b", "https://mangabu.jp/episodes/0"])
+
+    captured = capsys.readouterr()
+    assert PaywalledSecond.instances[-1].gets == [f"https://mangabu.jp/episodes/{i}" for i in range(3)]
+    assert "skip: 'locked' needs a purchase or a login." in captured.err
+    assert "saved: ep2" in captured.out
+    assert "done." in captured.out
+
+
+def test_a_paid_episode_is_not_followed_without_bulk(monkeypatch, capsys):
+    class Paywalled(RecordingComici):
+        def get(self, url, save_path=".", **_kwargs):
+            self.gets.append(url)
+            warnings.warn(NeedPurchase("locked", "https://mangabu.jp/episodes/1"), stacklevel=1)
+            raise AssertionError
+
+    monkeypatch.setattr("getcomici.cli.Comici", Paywalled)
+    main(["https://mangabu.jp/episodes/0"])
+    assert Paywalled.instances[-1].gets == ["https://mangabu.jp/episodes/0"]
     assert "needs a purchase or a login" in capsys.readouterr().err
 
 
