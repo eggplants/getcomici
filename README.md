@@ -44,6 +44,7 @@ Retrieve and save images from manga distribution sites using [Comici+](https://c
 - <https://championcross.jp>
 - <https://comic-growl.com>
 - <https://comic-room-base.com>
+- <https://comic-ryu.jp>
 - <https://comic.j-nbooks.jp>
 - <https://comicpash.jp>
 - <https://comicride.jp>

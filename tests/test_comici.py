@@ -575,6 +575,7 @@ TEST_URLS: dict[str, str] = {
     "championcross.jp": "https://championcross.jp/episodes/f79c98b6ede83",
     "comic-growl.com": "https://comic-growl.com/episodes/ae67f63a142b8",
     "comic-room-base.com": "https://comic-room-base.com/episodes/49e48489486b7",
+    "comic-ryu.jp": "https://comic-ryu.jp/episodes/15b4bb6e23094",
     "comic.j-nbooks.jp": "https://comic.j-nbooks.jp/episodes/4c9428882f24a",
     "comicpash.jp": "https://comicpash.jp/episodes/3e051ee5500c3",
     "comicride.jp": "https://comicride.jp/episodes/e7137bf1e8b27",

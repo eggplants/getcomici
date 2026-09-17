@@ -72,6 +72,7 @@ VALID_HOSTS = (
     "championcross.jp",
     "comic-growl.com",
     "comic-room-base.com",
+    "comic-ryu.jp",
     "comic.j-nbooks.jp",
     "comicpash.jp",
     "comicride.jp",
